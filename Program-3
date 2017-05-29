@@ -1,0 +1,66 @@
+%***************************************************************************************;
+%* OVERVIEW :     This program will read in the file with delimiters inside the data 	*;
+%*				  and creates an corrected file by including text qualifiers around the *;
+%*				  field that has delimiters inside it. Then the corrected file can 		*;
+%*                be read using DSD option (ignores delimiters within a field enclosed  *;
+%*				  by text qualifiers.													*;
+%*                Note: This program works only if one field with delimiters inside     *; 
+%*					    is present in the Input file        							*;
+%*                                              														*;
+%***************************************************************************************;
+
+/* Intitialize Macro Variables */
+
+/*%LET Path = X:\DATAPREP;*/
+/*%LET Input_File =  Compeat GL Export 2013;*/
+%LET Delimiter = '|';/* Specify the Delimiter enclosed in single quotes Eg., Pipe - '|', Tab - '09'x etc.,*/
+%LET Delimiter_Expected = 29; /* No. of delimiters inside the data - Value should be 1 less than the No. of fields in the data */ 
+%LET Delimiter_Pos = 2; /* Nth word that is expected to have delimiter inside the data value */
+
+%MACRO JE_CORRECT(Input_File,DATASET);
+DATA SASDATA.&DATASET.;
+	Infile "&Path.\Rawdata\&Input_File..txt" Truncover Lrecl=32767 Firstobs=1 ;
+	Input @1 Text $ 1 - 2000;
+	Start_Pos = 0;
+	End_Pos = 0;
+	Begin_Cnt = 0;
+	End_Cnt = 0;
+	Delim_Count = Count(Text,&Delimiter.);
+
+	/* If Delimiter Count > Expected Delimiters then find the start and end positions of the field that has delimiters inside data */
+	If Delim_Count > &Delimiter_Expected. Then Do;
+		Str_Len = Length(Strip(Text));
+		Do J = 1 To Str_Len;
+			If Substr(Text,J,1) = &Delimiter. Then Begin_Cnt + 1;
+			If Begin_Cnt = %Eval(&Delimiter_Pos. - 1) Then Do;
+				Start_pos = J;
+				Leave;
+			End;
+		End;
+
+		Do K = 1 To Str_Len;
+			If Substr(Reverse(Strip(Text)),K,1) = &Delimiter. Then End_Cnt + 1;
+			If End_Cnt = %Eval(&Delimiter_Expected. - &Delimiter_Pos. + 1) Then Do;
+				End_pos = (Str_Len - K) + 1;
+				Leave;
+			End;
+		End;
+	/* Replace any single or double quotation marks with space */	
+		Len = (End_pos-1) - (Start_pos + 1) + 1;
+		Do I = 1 To Len;
+			Char = Substr(Text,Start_pos+I,1);
+			If Char in ('"', "'") Then Text = Translate(Text," ",Char);
+		End;
+ 
+		Text = Substrn(Text,1,Start_pos)||'"'||Substrn(Text,Start_pos+1,End_pos-Start_pos-1)||'"'||Substrn(Text,End_pos);
+	End;
+
+	Row_No = _N_;
+
+	File "&Path.\Rawdata\&Input_File._Corrected.txt" Lrecl=32767;
+            Put @1 Text;
+RUN;
+%MEND;
+
+
+%JE_CORRECT(JE,JE_P1_C);
